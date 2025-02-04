@@ -18,7 +18,7 @@ This project aims to simplify the deployment of VASP through containerization. B
 1.  Clone this repository (or copy the Dockerfile):
 
     ```bash
-    git clone [https://github.com/AlZrSe/vasp-docker.git](https://github.com/AlZrSe/vasp-docker.git)
+    git clone https://github.com/AlZrSe/vasp-docker.git
     cd vasp-docker
     ```
 
