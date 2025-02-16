@@ -1,12 +1,15 @@
+# Set build environment variables
+ARG VASP_VERSION=6.3.2
+# Set to true to run VASP test suite
+ARG BUILD_TEST=false
+
+# Build stage
 FROM nvcr.io/nvidia/nvhpc:25.1-devel-cuda_multi-ubuntu22.04 AS build
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
-
-# Set build environment variables
-ENV VASP_VERSION=6.3.2
-# Set to true to run VASP test suite
-ENV BUILD_TEST=false
+ARG VASP_VERSION
+ARG BUILD_TEST
 
 # Install basic dependencies
 RUN apt-get update && apt-get install -y \
@@ -15,8 +18,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables
-ENV LD_LIBRARY_PATH=/usr/local/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/extras/qd/lib/
 ENV PATH=/usr/local/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/extras/qd/lib/:/usr/lib/x86_64-linux-gnu/:/opt/nvidia/hpc_sdk/Linux_x86_64/2025/math_libs/lib64:$LD_LIBRARY_PATH
 ENV FFTW_ROOT=/vasp
 
 # Create working directory
@@ -44,7 +47,6 @@ WORKDIR /vasp/vasp.${VASP_VERSION}
 RUN cp /vasp/vasp.${VASP_VERSION}/arch/makefile.include.nvhpc_acc /vasp/vasp.${VASP_VERSION}/makefile.include
 RUN sed -i 's/-gpu=cc60,cc70,cc80,cuda11.0//' /vasp/vasp.${VASP_VERSION}/makefile.include
 
-
 RUN make all
 
 # Testing VASP
@@ -52,15 +54,29 @@ RUN if [ "$BUILD_TEST" = "true" ] ; then \
         make test; \
     fi
 
+# Runtime stage
+FROM nvcr.io/nvidia/nvhpc:25.1-runtime-cuda12.6-ubuntu22.04
+
+# Set environment variables
+ARG VASP_VERSION
+ENV LD_LIBRARY_PATH=/usr/local/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/extras/qd/lib/:/usr/lib/x86_64-linux-gnu/:/opt/nvidia/hpc_sdk/Linux_x86_64/2025/math_libs/lib64:$LD_LIBRARY_PATH
+
+COPY --from=build /vasp/vasp.${VASP_VERSION}/bin/* /usr/local/bin/
+
 # Switch back to root for system operations
 USER root
 
+# Install basic dependencies
+RUN apt-get update && apt-get install -y \
+    libfftw3-double3 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy VASP executable to /usr/local/bin, setup task directory and remove source code
-RUN cp /vasp/vasp.${VASP_VERSION}/bin/vasp_* /usr/local/bin/ \
-    && chmod 755 /usr/local/bin/vasp_* \
+RUN chmod 755 /usr/local/bin/vasp_* \
+    && groupadd -r vasp && groupadd -r mpi && useradd -r -g vasp -m vasp \
+    && usermod -a -G mpi vasp \
     && mkdir /task \
-    && chown -R vasp:vasp /task \
-    && rm -rf /vasp
+    && chown -R vasp:vasp /task
 
 # Switch to non-root user
 USER vasp
