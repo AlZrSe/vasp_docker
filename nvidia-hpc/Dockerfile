@@ -57,7 +57,7 @@ RUN if [ "${VASP_VERSION%.*}" = "6.1" ]; then \
     && sed -i 's/-gpu=cc60,cc70,cc80,cuda11.0//' /vasp/vasp.${VASP_VERSION}/makefile.include; \
     fi
 
-RUN make std
+RUN make std ncl gam
 
 # Testing VASP
 RUN if [ "$BUILD_TEST" = "true" ] ; then \
