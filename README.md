@@ -72,6 +72,8 @@ docker run -it --rm \
 
 `vasp_ncl` and `vasp_gam` commands also available.
 
+For GPU support add additional parameters `--gpus all --env NVIDIA_DISABLE_REQUIRE=1`.
+
 ## Tested toolchains and versions:
 
 * gcc + openmpi + libfftw3 + openblas + scalapack from standard Ubuntu 24.04 with VASP 6.3.2 (also with VASP's `make test`)
