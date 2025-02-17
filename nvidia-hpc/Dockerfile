@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y \
 ENV PATH=/usr/local/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/bin:$PATH
 ENV LD_LIBRARY_PATH=/usr/local/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/extras/qd/lib/:/usr/lib/x86_64-linux-gnu/:/opt/nvidia/hpc_sdk/Linux_x86_64/2025/math_libs/lib64:$LD_LIBRARY_PATH
 ENV FFTW_ROOT=/vasp
+ENV FFTW=/vasp
+ENV QD=/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/extras/qd/
+ENV NCCL=/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/nccl/lib/
 
 # Create working directory
 WORKDIR /vasp
@@ -44,10 +47,17 @@ USER vasp
 COPY vasp.${VASP_VERSION}.tgz ./vasp.${VASP_VERSION}.tgz
 RUN tar xzf vasp.${VASP_VERSION}.tgz && rm vasp.${VASP_VERSION}.tgz
 WORKDIR /vasp/vasp.${VASP_VERSION}
-RUN cp /vasp/vasp.${VASP_VERSION}/arch/makefile.include.nvhpc_acc /vasp/vasp.${VASP_VERSION}/makefile.include
-RUN sed -i 's/-gpu=cc60,cc70,cc80,cuda11.0//' /vasp/vasp.${VASP_VERSION}/makefile.include
+RUN if [ "${VASP_VERSION%.*}" = "6.1" ]; then \
+    cp /vasp/vasp.${VASP_VERSION}/arch/makefile.include.linux_pgi_acc /vasp/vasp.${VASP_VERSION}/makefile.include \
+    && sed -i 's/-ta=tesla:cc30,cc35,cc50,cc60,cc70,cuda10.1/-gpu=cuda12.6/' /vasp/vasp.${VASP_VERSION}/makefile.include \
+    && sed -i 's/-Mcuda/-cuda/g' /vasp/vasp.${VASP_VERSION}/makefile.include \
+    && sed -i 's/-ta=tesla:nollvm//' /vasp/vasp.${VASP_VERSION}/makefile.include; \
+    else \
+    cp /vasp/vasp.${VASP_VERSION}/arch/makefile.include.nvhpc_acc /vasp/vasp.${VASP_VERSION}/makefile.include \
+    && sed -i 's/-gpu=cc60,cc70,cc80,cuda11.0//' /vasp/vasp.${VASP_VERSION}/makefile.include; \
+    fi
 
-RUN make all
+RUN make std
 
 # Testing VASP
 RUN if [ "$BUILD_TEST" = "true" ] ; then \
