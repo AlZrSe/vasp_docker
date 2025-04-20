@@ -77,3 +77,4 @@ For GPU support add additional parameters `--gpus all --env NVIDIA_DISABLE_REQUI
 ## Tested toolchains and versions:
 
 * gcc + openmpi + libfftw3 + openblas + scalapack from standard Ubuntu 24.04 with VASP 6.3.2 (also with VASP's `make test`)
+* NVidia HPC compilers with VASP 6.3.2 (with GPU support)
