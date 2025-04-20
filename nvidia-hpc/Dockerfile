@@ -79,15 +79,24 @@ USER root
 # Install basic dependencies
 RUN apt-get update && apt-get install -y \
     libfftw3-double3 \
-    && rm -rf /var/lib/apt/lists/*
+    sudo \
+        && rm -rf /var/lib/apt/lists/*
 
 # Copy VASP executable to /usr/local/bin, setup task directory and remove source code
 RUN chmod 755 /usr/local/bin/vasp_* \
     && groupadd -r vasp && groupadd -r mpi && useradd -r -g vasp -m vasp \
     && usermod -a -G mpi vasp \
     && mkdir /task \
-    && chown -R vasp:vasp /task
+    && chown -R vasp:vasp /task \
+    && echo "vasp ALL=(ALL) NOPASSWD: /usr/bin/chown, /usr/bin/chmod" >> /etc/sudoers.d/vasp
+
+# Copy entrypoint script
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Switch to non-root user
 USER vasp
 WORKDIR /task
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["bash"]
