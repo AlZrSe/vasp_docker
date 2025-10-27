@@ -86,12 +86,13 @@ RUN if [ "${VASP_VERSION%.*}" = "6.1" ]; then \
     fi
 
 # Configure HDF5 in makefile.include
-RUN sed -i '/CPP_OPTIONS=/s/$/ -DVASP_HDF5/' makefile.include \
-    && echo "HDF5_ROOT  = ${HDF5_ROOT}" >> makefile.include \
+RUN echo "HDF5_ROOT  = ${HDF5_ROOT}" >> makefile.include \
+    && echo "CPP_OPTIONS += -DVASP_HDF5" >> makefile.include \
     && echo "LLIBS     += -L\$(HDF5_ROOT)/lib -lhdf5_fortran -lhdf5 -lz" >> makefile.include \
-    && echo "INCS      += -I\$(HDF5_ROOT)/include" >> makefile.include
+    && echo "INCS      += -I\$(HDF5_ROOT)/include" >> makefile.include \
+    && grep "CPP_OPTIONS" makefile.include
 
-RUN make std ncl gam
+RUN make std gam ncl
 
 # Testing VASP
 RUN if [ "$BUILD_TEST" = "true" ] ; then \
