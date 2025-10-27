@@ -2,6 +2,8 @@
 ARG VASP_VERSION=6.3.2
 # Set to true to run VASP test suite
 ARG BUILD_TEST=false
+# Set HDF5 version
+ARG HDF5_VERSION=1.14.6
 
 # Build stage
 FROM nvcr.io/nvidia/nvhpc:25.1-devel-cuda_multi-ubuntu22.04 AS build
@@ -10,12 +12,38 @@ FROM nvcr.io/nvidia/nvhpc:25.1-devel-cuda_multi-ubuntu22.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 ARG VASP_VERSION
 ARG BUILD_TEST
+ARG HDF5_VERSION
 
 # Install basic dependencies
 RUN apt-get update && apt-get install -y \
     rsync \
     libfftw3-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Download and compile HDF5
+RUN HDF5_V=$(echo ${HDF5_VERSION} | tr . _) && \
+    wget https://support.hdfgroup.org/releases/hdf5/v$(echo ${HDF5_V} | cut -d_ -f1,2)/v${HDF5_V}/downloads/hdf5-${HDF5_VERSION}.tar.gz \
+  && tar xzf hdf5-${HDF5_VERSION}.tar.gz \
+  && cd hdf5-${HDF5_VERSION} \
+  && mkdir build && cd build \
+  && CC=mpicc FC=mpif90 cmake .. \
+    -DCMAKE_INSTALL_PREFIX=/usr/local/hdf5 \
+    -DCMAKE_C_FLAGS="-fPIC" \
+    -DCMAKE_Fortran_FLAGS="-fPIC" \
+    -DHDF5_BUILD_FORTRAN=ON \
+    -DBUILD_SHARED_LIBS=ON \
+    -DHDF5_ENABLE_PARALLEL=ON \
+    -DHDF5_ENABLE_Z_LIB_SUPPORT=ON \
+  && make -j$(nproc) \
+  && make install \
+  && cd .. \
+  && rm -rf hdf5-${HDF5_VERSION}*
+
+# Set HDF5 environment variables
+ENV HDF5_ROOT=/usr/local/hdf5
+ENV PATH=$HDF5_ROOT/bin:$PATH
+ENV LD_LIBRARY_PATH=$HDF5_ROOT/lib:$LD_LIBRARY_PATH
 
 # Set environment variables
 ENV PATH=/usr/local/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/bin:$PATH
@@ -57,6 +85,12 @@ RUN if [ "${VASP_VERSION%.*}" = "6.1" ]; then \
     && sed -i 's/-gpu=cc60,cc70,cc80,cuda11.0//' /vasp/vasp.${VASP_VERSION}/makefile.include; \
     fi
 
+# Configure HDF5 in makefile.include
+RUN sed -i '/CPP_OPTIONS=/s/$/ -DVASP_HDF5/' makefile.include \
+    && echo "HDF5_ROOT  = ${HDF5_ROOT}" >> makefile.include \
+    && echo "LLIBS     += -L\$(HDF5_ROOT)/lib -lhdf5_fortran -lhdf5 -lz" >> makefile.include \
+    && echo "INCS      += -I\$(HDF5_ROOT)/include" >> makefile.include
+
 RUN make std ncl gam
 
 # Testing VASP
@@ -69,18 +103,23 @@ FROM nvcr.io/nvidia/nvhpc:25.1-runtime-cuda12.6-ubuntu22.04
 
 # Set environment variables
 ARG VASP_VERSION
-ENV LD_LIBRARY_PATH=/usr/local/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/extras/qd/lib/:/usr/lib/x86_64-linux-gnu/:/opt/nvidia/hpc_sdk/Linux_x86_64/2025/math_libs/lib64:$LD_LIBRARY_PATH
+ENV HDF5_ROOT=/usr/local/hdf5
+ENV LD_LIBRARY_PATH=/usr/local/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/extras/qd/lib/:/usr/lib/x86_64-linux-gnu/:/opt/nvidia/hpc_sdk/Linux_x86_64/2025/math_libs/lib64:${HDF5_ROOT}/lib:$LD_LIBRARY_PATH
 
+# Copy HDF5 runtime files from build stage
+COPY --from=build /usr/local/hdf5 /usr/local/hdf5
+
+# Copy VASP executables
 COPY --from=build /vasp/vasp.${VASP_VERSION}/bin/* /usr/local/bin/
 
 # Switch back to root for system operations
 USER root
 
-# Install basic dependencies
+# Install basic dependencies (without HDF5 packages)
 RUN apt-get update && apt-get install -y \
     libfftw3-double3 \
     sudo \
-        && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy VASP executable to /usr/local/bin, setup task directory and remove source code
 RUN chmod 755 /usr/local/bin/vasp_* \
